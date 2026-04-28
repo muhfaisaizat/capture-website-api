@@ -79,43 +79,18 @@ async function tryWithPuppeteer(url, options) {
 
 async function takePlainPuppeteerScreenshot(url, options) {
     options.encoding = 'binary';
-    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 3000;
+    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 300;
     let browser;
     let page;
     let buffer;
     try {
         browser = await puppeteer.launch(options.launchOptions);
         page = await browser.newPage();
-
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        // Set viewport lebar dulu
-        await page.setViewport({
-            width: options.width || 1280,
-            height: options.height || 900,
-            deviceScaleFactor: options.scaleFactor || 1
-        });
-
-        // Goto dengan timeout yang wajar
-        try {
-            await page.goto(url, {
-                waitUntil: 'domcontentloaded',
-                timeout: 20000
-            });
-        } catch (e) {
-            console.log('goto timeout, proceeding anyway: ' + e.message);
-        }
-
-        // Tunggu sesuai parameter
+        await page.goto(url);
+        await setViewport(page, options);
         await new Promise(r => setTimeout(r, options.wait_before_screenshot_ms));
-
-        // Screenshot fullPage langsung tanpa resize
-        const array = await page.screenshot({ 
-            fullPage: true,
-            captureBeyondViewport: true
-        });
+        const array = await page.screenshot();
         buffer = Buffer.from(array);
-
     } catch (e) {
         console.error('Error during Puppeteer screenshot capture: ', e);
     } finally {
@@ -127,25 +102,14 @@ async function takePlainPuppeteerScreenshot(url, options) {
 }
 
 async function setViewport(page, options) {
-    const width = options.width || 1280;
-
-    // Auto detect tinggi halaman
-    const pageHeight = await page.evaluate(() => {
-        return Math.max(
-            document.body.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.scrollHeight,
-            document.documentElement.offsetHeight,
-        );
-    });
-
-    const height = options.height || pageHeight || 900;
-
-    await page.setViewport({
-        width: width,
-        height: height,
-        deviceScaleFactor: options.scaleFactor || 1
-    });
+    if (options.width && options.height) {
+        const viewportOptions = {
+            width: options.width,
+            height: options.height,
+            deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
+        };
+        await page.setViewport(viewportOptions);
+    }
 }
 
 function getResponseType(queryParams) {
