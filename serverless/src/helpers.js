@@ -79,38 +79,73 @@ async function tryWithPuppeteer(url, options) {
 
 async function takePlainPuppeteerScreenshot(url, options) {
     options.encoding = 'binary';
-    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 3000;
+    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 5000;
     let browser;
     let page;
     let buffer;
     try {
         browser = await puppeteer.launch(options.launchOptions);
         page = await browser.newPage();
-        
-        // Set viewport awal dulu dengan width saja
+
+        // Set user agent agar tidak diblokir
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+        // Set viewport awal
         await page.setViewport({
             width: options.width || 1280,
             height: 900,
-            deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
+            deviceScaleFactor: options.scaleFactor || 1
         });
 
-        // Goto dengan waitUntil agar halaman benar-benar selesai load
-        await page.goto(url, {
-            waitUntil: 'networkidle2',
-            timeout: 30000
+        // Goto dengan fallback — coba networkidle2 dulu, kalau timeout pakai domcontentloaded
+        try {
+            await page.goto(url, {
+                waitUntil: 'networkidle2',
+                timeout: 15000
+            });
+        } catch (e) {
+            console.log('networkidle2 timeout, fallback to domcontentloaded');
+            await page.goto(url, {
+                waitUntil: 'domcontentloaded',
+                timeout: 15000
+            });
+        }
+
+        // Tunggu CSS & font selesai apply
+        await page.waitForTimeout ? 
+            await page.waitForTimeout(1000) : 
+            await new Promise(r => setTimeout(r, 1000));
+
+        // Scroll ke bawah perlahan agar lazy load terpicu
+        await page.evaluate(async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                const distance = 300;
+                const timer = setInterval(() => {
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+                    if (totalHeight >= document.body.scrollHeight) {
+                        clearInterval(timer);
+                        window.scrollTo(0, 0); // Scroll balik ke atas
+                        resolve();
+                    }
+                }, 100);
+            });
         });
 
-        // Tunggu tambahan sesuai parameter
+        // Tunggu sesuai parameter setelah scroll
         await new Promise(r => setTimeout(r, options.wait_before_screenshot_ms));
 
-        // Baru detect tinggi halaman setelah semua load
+        // Auto detect tinggi setelah semua konten load
         await setViewport(page, options);
 
-        // Tunggu sebentar setelah resize viewport
+        // Tunggu sebentar setelah resize
         await new Promise(r => setTimeout(r, 500));
 
+        // Screenshot
         const array = await page.screenshot({ fullPage: true });
         buffer = Buffer.from(array);
+
     } catch (e) {
         console.error('Error during Puppeteer screenshot capture: ', e);
     } finally {
@@ -123,24 +158,24 @@ async function takePlainPuppeteerScreenshot(url, options) {
 
 async function setViewport(page, options) {
     const width = options.width || 1280;
-    
-    // Auto detect tinggi halaman sebenarnya
+
+    // Auto detect tinggi halaman
     const pageHeight = await page.evaluate(() => {
         return Math.max(
             document.body.scrollHeight,
             document.body.offsetHeight,
             document.documentElement.scrollHeight,
-            document.documentElement.offsetHeight
+            document.documentElement.offsetHeight,
+            10000 // minimum fallback
         );
     });
 
-    // Pakai height dari parameter kalau ada, kalau tidak pakai auto detect
     const height = options.height || pageHeight || 900;
 
     await page.setViewport({
         width: width,
         height: height,
-        deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
+        deviceScaleFactor: options.scaleFactor || 1
     });
 }
 
