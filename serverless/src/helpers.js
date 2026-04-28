@@ -79,17 +79,37 @@ async function tryWithPuppeteer(url, options) {
 
 async function takePlainPuppeteerScreenshot(url, options) {
     options.encoding = 'binary';
-    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 300;
+    options.wait_before_screenshot_ms = options.wait_before_screenshot_ms || 3000;
     let browser;
     let page;
     let buffer;
     try {
         browser = await puppeteer.launch(options.launchOptions);
         page = await browser.newPage();
-        await page.goto(url);
-        await setViewport(page, options);
+        
+        // Set viewport awal dulu dengan width saja
+        await page.setViewport({
+            width: options.width || 1280,
+            height: 900,
+            deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
+        });
+
+        // Goto dengan waitUntil agar halaman benar-benar selesai load
+        await page.goto(url, {
+            waitUntil: 'networkidle2',
+            timeout: 30000
+        });
+
+        // Tunggu tambahan sesuai parameter
         await new Promise(r => setTimeout(r, options.wait_before_screenshot_ms));
-        const array = await page.screenshot();
+
+        // Baru detect tinggi halaman setelah semua load
+        await setViewport(page, options);
+
+        // Tunggu sebentar setelah resize viewport
+        await new Promise(r => setTimeout(r, 500));
+
+        const array = await page.screenshot({ fullPage: true });
         buffer = Buffer.from(array);
     } catch (e) {
         console.error('Error during Puppeteer screenshot capture: ', e);
