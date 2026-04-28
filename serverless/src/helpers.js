@@ -102,14 +102,26 @@ async function takePlainPuppeteerScreenshot(url, options) {
 }
 
 async function setViewport(page, options) {
-    if (options.width && options.height) {
-        const viewportOptions = {
-            width: options.width,
-            height: options.height,
-            deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
-        };
-        await page.setViewport(viewportOptions);
-    }
+    const width = options.width || 1280;
+    
+    // Auto detect tinggi halaman sebenarnya
+    const pageHeight = await page.evaluate(() => {
+        return Math.max(
+            document.body.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.scrollHeight,
+            document.documentElement.offsetHeight
+        );
+    });
+
+    // Pakai height dari parameter kalau ada, kalau tidak pakai auto detect
+    const height = options.height || pageHeight || 900;
+
+    await page.setViewport({
+        width: width,
+        height: height,
+        deviceScaleFactor: options.scaleFactor ? options.scaleFactor : 1
+    });
 }
 
 function getResponseType(queryParams) {
